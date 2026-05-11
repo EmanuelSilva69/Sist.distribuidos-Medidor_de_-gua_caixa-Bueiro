@@ -1,0 +1,43 @@
+# Estágio de Compilação
+FROM debian:bookworm-slim AS builder
+
+# Instala dependências de compilação e as bibliotecas necessárias
+RUN apt-get update && apt-get install -y \
+    gcc \
+    libcurl4-openssl-dev \
+    libcjson-dev \
+    libqrencode-dev \
+    make \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copia os códigos fonte
+COPY conectarevolution.c codigodeenvioc.c ./
+
+# Compila o utilitário de Setup (QR Code)
+# Nota: usamos -I/usr/include/cjson para localizar o header se necessário
+RUN gcc conectarevolution.c -o setup_qr -lcurl -lcjson -lqrencode
+
+# Compila o Bot de Monitoramento
+RUN gcc codigodeenvioc.c -o bot_monitor -lcurl -lcjson
+
+# Estágio Final (Imagem Leve)
+FROM debian:bookworm-slim
+
+# Instala apenas as bibliotecas de execução (runtime)
+RUN apt-get update && apt-get install -y \
+    libcurl4 \
+    libcjson1 \
+    libqrencode4 \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copia apenas os executáveis compilados do estágio anterior
+COPY --from=builder /app/setup_qr .
+COPY --from=builder /app/bot_monitor .
+
+# O container inicia rodando o monitoramento
+CMD ["./bot_monitor"]
