@@ -77,7 +77,7 @@ services:
       
       # Regras de Negócio (TAP/Planejamento) (eu posso mudar, caso queiram. Sei que foge do tap mas eu quero refinar com base no teste)
       - NIVEL_CRITICO=15 
-      - GESTOR_NUM=55989XXXXXXXX # Número que receberá os alertas
+      - GESTOR_JID=55989XXXXXXXX@s.whatsapp.net
     networks:
       - rede-monitoramento-hidrico
     depends_on:
