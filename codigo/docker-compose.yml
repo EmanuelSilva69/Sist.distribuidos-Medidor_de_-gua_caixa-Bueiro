@@ -1,4 +1,3 @@
-version: '3.8'
 
 services:
   # 1. Base de Dados (Persistência para a Evolution API)
@@ -37,13 +36,13 @@ services:
       - AUTHENTICATION_TYPE=apikey
       - AUTHENTICATION_API_KEY=${EVOLUTION_API_KEY}
       
-      # Conexão com o Banco conforme a lógica fornecida
+      # Conexão com o Banco (Lógica de Persistência v2)
       - DATABASE_ENABLED=true
       - DATABASE_PROVIDER=postgresql
       - DATABASE_CONNECTION_URI=postgresql://${POSTGRES_USER:-admin_monitor}:${POSTGRES_PASSWORD}@postgres-reservatorio:5432/${EVOLUTION_DB_NAME:-evolution_db}?schema=public
       - DATABASE_CONNECTION_CLIENT_NAME=monitor_hidrico_v2
       
-      # Cache Redis
+      # Cache Redis para performance em tempo real
       - CACHE_REDIS_ENABLED=true
       - CACHE_REDIS_URI=redis://redis-reservatorio:6379/0
       - CACHE_LOCAL_ENABLED=false
@@ -60,7 +59,7 @@ services:
       redis-reservatorio:
         condition: service_started
 
-  # 4. Bot de Monitoramento (Lógica de Decisão)
+  # 4. Bot de Monitoramento (Seu código em C distribuído)
   bot-monitor:
     build:
       context: .
@@ -68,10 +67,17 @@ services:
     container_name: bot-monitor-hidrico
     restart: unless-stopped
     environment:
+      # URL da instância do Interscity disponível na UFMA
+      - MIDDLEWARE_URL=http://ENDERECO_INTERSCITY_UFMA/resources/RES-SLZ-001/data/last
+      
+      # Endereço interno da API para comunicação direta no Docker
       - EVOLUTION_URL=http://evolution-reservatorio:8080
-      - EVOLUTION_API_TOKEN=${EVOLUTION_API_KEY}
+      - EVOLUTION_API_KEY=${EVOLUTION_API_KEY}
       - INSTANCE_NAME=${INSTANCE_NAME:-reservatorio-slz}
-      - NIVEL_CRITICO=15 # Percentual planejado no TAP
+      
+      # Regras de Negócio (TAP/Planejamento) (eu posso mudar, caso queiram. Sei que foge do tap mas eu quero refinar com base no teste)
+      - NIVEL_CRITICO=15 
+      - GESTOR_NUM=55989XXXXXXXX # Número que receberá os alertas
     networks:
       - rede-monitoramento-hidrico
     depends_on:
