@@ -12,6 +12,10 @@
 #define GESTOR_NUM     "55989XXXXXXXX"      // Número para o alerta (SE vocês quiserem em grupo, eu edito. é só mudar o ID que o whatsapp envia.)
 #define NIVEL_CRITICO  15.0                 // 15% definido no plano 
 
+char *middleware_url = getenv("MIDDLEWARE_URL") ? getenv("MIDDLEWARE_URL") : "http://interscity-api:8080/resources/RES-SLZ-001/data/last";
+char *evolution_url = getenv("EVOLUTION_URL") ? getenv("EVOLUTION_URL") : "http://evolution-emanuel:8080/message/sendText/reservatorio-slz";
+char *api_key = getenv("EVOLUTION_API_KEY");
+char *gestor_num = getenv("GESTOR_NUM") ? getenv("GESTOR_NUM") : "55989XXXXXXXX";
 // Estrutura para armazenar a resposta do Middleware
 struct MemoryStruct {
   char *memory;
