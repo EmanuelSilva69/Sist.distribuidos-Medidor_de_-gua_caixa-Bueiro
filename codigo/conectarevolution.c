@@ -5,9 +5,9 @@
 #include "cJSON.h"
 #include <qrencode.h> // Biblioteca para gerar o QR no terminal
 
-#define API_URL "http://localhost:9095"
-#define API_KEY "SUA_CHAVE_API_AQUI" // ${EVOLUTION_API_KEY}
-#define INSTANCE "reservatorio-slz"
+char *api_url = getenv("EVOLUTION_URL") ? getenv("EVOLUTION_URL") : "http://evolution-emanuel:8080";
+char *api_key = getenv("EVOLUTION_API_KEY");
+char *instance = getenv("INSTANCE_NAME") ? getenv("INSTANCE_NAME") : "reservatorio-slz";
 
 struct MemoryStruct {
     char *memory;
