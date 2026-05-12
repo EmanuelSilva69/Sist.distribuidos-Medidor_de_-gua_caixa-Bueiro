@@ -10,7 +10,7 @@ services:
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - POSTGRES_DB=${EVOLUTION_DB_NAME:-evolution_db}
     ports:
-      - "5432:5432"
+      - "11432:5432" # Porta externa 11432 para evitar conflitos no Windows
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
@@ -30,19 +30,18 @@ services:
     container_name: evolution-reservatorio
     restart: unless-stopped
     ports:
-      - "9095:8080"
+      - "11011:8080" # Acesso externo via http://localhost:11011
     environment:
       - SERVER_URL=http://evolution-reservatorio:8080
       - AUTHENTICATION_TYPE=apikey
       - AUTHENTICATION_API_KEY=${EVOLUTION_API_KEY}
       
-      # Conexão com o Banco (Lógica de Persistência v2)
+      # Conexão Interna: Sempre usa a porta 5432 do container
       - DATABASE_ENABLED=true
       - DATABASE_PROVIDER=postgresql
       - DATABASE_CONNECTION_URI=postgresql://${POSTGRES_USER:-admin_monitor}:${POSTGRES_PASSWORD}@postgres-reservatorio:5432/${EVOLUTION_DB_NAME:-evolution_db}?schema=public
       - DATABASE_CONNECTION_CLIENT_NAME=monitor_hidrico_v2
       
-      # Cache Redis para performance em tempo real
       - CACHE_REDIS_ENABLED=true
       - CACHE_REDIS_URI=redis://redis-reservatorio:6379/0
       - CACHE_LOCAL_ENABLED=false
@@ -54,12 +53,10 @@ services:
     networks:
       - rede-monitoramento-hidrico
     depends_on:
-      postgres-reservatorio:
-        condition: service_started
-      redis-reservatorio:
-        condition: service_started
+      - postgres-reservatorio
+      - redis-reservatorio
 
-  # 4. Bot de Monitoramento (Seu código em C distribuído)
+  # 4. Bot de Monitoramento (Lógica Distribuída em C)
   bot-monitor:
     build:
       context: .
@@ -67,22 +64,23 @@ services:
     container_name: bot-monitor-hidrico
     restart: unless-stopped
     environment:
-      # URL da instância do Interscity disponível na UFMA
-      - MIDDLEWARE_URL=http://ENDERECO_INTERSCITY_UFMA/resources/RES-SLZ-001/data/last
+      # URL Oficial do LSDI/UFMA com o seu UUID registrado
+      - MIDDLEWARE_URL=${MIDDLEWARE_URL}
+      #https://cidadesinteligentes.lsdi.ufma.br/interscity_lh/collector/resources/f0877867-005f-407f-810b-560cd726d5a2/data/last
       
-      # Endereço interno da API para comunicação direta no Docker
+      # Comunicação Interna Docker: Mantemos a porta 8080
       - EVOLUTION_URL=http://evolution-reservatorio:8080
+      - INSTANCE_NAME=reservatorio-slz
       - EVOLUTION_API_KEY=${EVOLUTION_API_KEY}
       - INSTANCE_NAME=${INSTANCE_NAME:-reservatorio-slz}
       
-      # Regras de Negócio (TAP/Planejamento) (eu posso mudar, caso queiram. Sei que foge do tap mas eu quero refinar com base no teste)
+      # Regras de Negócio e Notificação
       - NIVEL_CRITICO=15 
-      - GESTOR_JID=55989XXXXXXXX@s.whatsapp.net
+      - GESTOR_JID=${GESTOR_JID}
     networks:
       - rede-monitoramento-hidrico
     depends_on:
-      evolution-reservatorio:
-        condition: service_healthy
+      - evolution-reservatorio # Removida a condição 'healthy' para evitar o travamento
 
 networks:
   rede-monitoramento-hidrico:
