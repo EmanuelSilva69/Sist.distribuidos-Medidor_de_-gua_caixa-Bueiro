@@ -6,7 +6,7 @@
 #include "cJSON.h" 
 
 // Fallbacks caso as variáveis de ambiente não existam
-#define DEFAULT_MIDDLEWARE "https://cidadesinteligentes.lsdi.ufma.br/interscity_lh/collector/resources/SEU_UUID_AQUI/data/last"
+#define DEFAULT_MIDDLEWARE "https://cidadesinteligentes.lsdi.ufma.br/interscity_lh/collector/resources/f0877867-005f-407f-810b-560cd726d5a2/data/last"
 #define DEFAULT_EVOLUTION  "http://evolution-emanuel:8080/message/sendText/reservatorio-slz"
 #define DEFAULT_JID        "55989XXXXXXXX@s.whatsapp.net" // JID padrão com sufixo
 #define NIVEL_CRITICO      15.0 
