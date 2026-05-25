@@ -1,0 +1,16 @@
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y \
+    gcc \
+    libcurl4-openssl-dev \
+    libcjson-dev \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY codigocenviotesteemanuelapenastestesemserooficial.c ./
+
+RUN gcc -std=c11 -Wall -Wextra -pedantic codigocenviotesteemanuelapenastestesemserooficial.c -o envio_teste -lcurl -lcjson -I/usr/include/cjson
+
+CMD ["./envio_teste"]
