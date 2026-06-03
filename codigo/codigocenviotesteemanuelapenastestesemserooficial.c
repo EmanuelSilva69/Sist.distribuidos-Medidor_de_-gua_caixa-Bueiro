@@ -4,8 +4,8 @@
 #include <curl/curl.h>
 #include "cJSON.h"
 
-// Endpoint oficial do Collector do LSDI/UFMA com seu UUID
-#define COLLECTOR_URL "https://cidadesinteligentes.lsdi.ufma.br/interscity_lh/collector/resources/f0877867-005f-407f-810b-560cd726d5a2/data"
+// URL que o simulador vai usar para enviar os dados (POST) para o Coletor do InterSCity
+#define MIDDLEWARE_URL "http://interscity-data-collector:3000/resources/f47ac10b-58cc-4372-a567-0e02b2c3d474/data"
 
 int main(void) {
     CURL *curl;
@@ -31,7 +31,7 @@ int main(void) {
         headers = curl_slist_append(headers, "Content-Type: application/json");
 
         // 3. Configuração da Requisição POST
-        curl_easy_setopt(curl, CURLOPT_URL, COLLECTOR_URL);
+        curl_easy_setopt(curl, CURLOPT_URL, MIDDLEWARE_URL); // Sincronizado com a macro do topo
         curl_easy_setopt(curl, CURLOPT_POSTFIELDS, json_string);
         curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
 
