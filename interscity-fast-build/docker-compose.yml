@@ -1,0 +1,194 @@
+
+services:
+  ########################
+  ### InterSCity Services
+  ########################
+
+  interscity-mongo:
+    container_name: interscity-mongo
+    image: 'mongo:3.4'
+    environment:
+      AUTH: 'no'
+
+  interscity-kong:
+    image: kong:0.11.2
+    container_name: interscity-kong
+    environment:
+      - KONG_DATABASE=postgres
+      - KONG_PG_HOST=interscity-postgres
+      - LC_CTYPE=en_US.UTF-8
+      - LC_ALL=en_US.UTF-8
+      - KONG_PG_USER=postgres
+      - KONG_PG_PASSWORD=admin
+    restart: always
+    command: bash -c "kong migrations up && kong start"
+    ports:
+      - "28000:8000"
+      - "28443:8443"
+      - "28001:8001"
+      - "27946:7946"
+      - "27946:7946/udp"
+    depends_on:
+      - interscity-postgres
+    links:
+      - interscity-postgres
+
+  interscity-rabbitmq:
+    container_name: interscity-rabbitmq
+    image: rabbitmq:3.6.5
+    command: bash -c "rabbitmq-server"
+    ports:
+      - '25672:5672'
+      - '25673:15672' # Interface web do RabbitMQ alterada para 25673
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:15672"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  interscity-postgres:
+    container_name: interscity-postgres
+    image: 'postgres:9.4'
+    environment:
+      POSTGRES_USER: 'postgres'
+      POSTGRES_PASSWORD: 'admin'
+      POSTGRES_DB: 'kong' # Adicione esta linha aqui
+    volumes:
+      - "db-data-kong-postgres:/var/lib/postgresql/data"
+
+  interscity-redis:
+    image: 'redis'
+    container_name: interscity-redis
+
+  interscity-mongo-cache:
+    container_name: interscity-mongo-cache
+    image: 'mongo:3.4'
+    user: 'root'
+    environment:
+      AUTH: 'no'
+    command: bash -c "chmod -R go+w /data/db && mongod --bind_ip 0.0.0.0"
+
+  #############################
+  ### InterSCity Microsservices
+  #############################
+
+  interscity-actuator-controller:
+    container_name: interscity-actuator-controller 
+    depends_on:
+      - 'interscity-mongo'
+      - 'interscity-mongo-cache'
+      - 'interscity-rabbitmq'
+      - 'interscity-kong'
+    image: 'dylanguedes/actuator-controller:stable'
+    ports:
+      - 25000:3000
+    command: bash -c "rake db:setup && bundle exec rails s -p 3000 -b 0.0.0.0"
+    environment:
+      MONGO_USER: 'admin'
+      MONGO_PASSWORD: 'admin'
+      MONGO_HOST: 'interscity-mongo'
+      MONGO_PORT: 27017
+      MONGO_CACHE_HOST: 'interscity-mongo-cache'
+      MONGO_CACHE_PORT: 27017
+      RABBITMQ_HOST: 'interscity-rabbitmq'
+      KONG_URI: 'http://interscity-kong:8001'
+      SELF_HOST: 'interscity-actuator-controller:3000'
+      REGISTER_METHOD: 'target'
+
+  interscity-resource-cataloguer:
+    container_name: interscity-resource-cataloguer
+    depends_on:
+      - 'interscity-postgres'
+      - 'interscity-redis'
+      - 'interscity-rabbitmq'
+      - 'interscity-kong'
+    image: 'dylanguedes/resource-cataloguer:stable'
+    ports:
+      - 23000:3000
+    command: bash -c "bundle install && rake db:setup && bundle exec rails s -p 3000 -b 0.0.0.0"
+    environment:
+      POSTGRES_USER: 'postgres'
+      POSTGRES_PASSWORD: 'admin'
+      POSTGRES_HOST: 'interscity-postgres'
+      POSTGRES_PORT: 5432
+      DATACOLLECTOR_HOST: 'interscity-data-collector:3000'
+      ACTUATORCONTROLLER_HOST: 'interscity-actuator-controller:3000'
+      RABBITMQ_HOST: 'interscity-rabbitmq'
+      KONG_URI: 'http://interscity-kong:8001'
+      SELF_HOST: 'interscity-resource-cataloguer:3000'
+      REGISTER_METHOD: 'target'
+      REDIS_HOST: 'interscity-redis'
+      REDIS_PORT: 6379
+
+  interscity-resource-adaptor:
+    container_name: interscity-resource-adaptor
+    depends_on:
+      - 'interscity-postgres'
+      - 'interscity-rabbitmq'
+      - 'interscity-kong'
+    image: 'dylanguedes/resource-adaptor:stable'
+    ports:
+      - 23002:3000
+    command: bash -c "bundle install && rake db:setup && bundle exec rails s -p 3000 -b 0.0.0.0"
+    environment:
+      POSTGRES_USER: 'postgres'
+      POSTGRES_PASSWORD: 'admin'
+      POSTGRES_HOST: 'interscity-postgres'
+      POSTGRES_PORT: 5432
+      CATALOGUER_HOST: 'interscity-resource-cataloguer:3000'
+      ADAPTOR_HOST: 'interscity-resource-adaptor:3000'
+      RABBITMQ_HOST: 'interscity-rabbitmq'
+      KONG_URI: 'http://interscity-kong:8001'
+      SELF_HOST: 'interscity-resource-adaptor:3000'
+      REGISTER_METHOD: 'target'
+
+  interscity-resource-discoverer:
+    container_name: interscity-resource-discoverer
+    depends_on:
+      - 'interscity-redis'
+      - 'interscity-rabbitmq'
+      - 'interscity-kong'
+    image: 'dylanguedes/resource-discoverer:stable'
+    ports:
+      - 23004:3000
+    command: bash -c "bundle install && bundle exec rails s -p 3000 -b 0.0.0.0"
+    environment:
+      REDIS_HOST: 'interscity-redis:6379'
+      DATACOLLECTOR_HOST: 'interscity-data-collector:3000'
+      CATALOGUER_HOST: 'interscity-resource-cataloguer:3000'
+      RABBITMQ_HOST: 'interscity-rabbitmq'
+      KONG_URI: 'http://interscity-kong:8001'
+      SELF_HOST: 'interscity-resource-discoverer:3000'
+      REGISTER_METHOD: 'target'
+
+  interscity-data-collector:
+    container_name: interscity-data-collector 
+    depends_on:
+      - 'interscity-mongo'
+      - 'interscity-mongo-cache'
+      - 'interscity-rabbitmq'
+      - 'interscity-kong'
+    image: 'dylanguedes/data-collector:stable'
+    ports:
+      - 24000:3000
+    command: bash -c "bundle install && rake db:mongoid:remove_indexes db:mongoid:create_indexes && bundle exec rails s -p 3000 -b 0.0.0.0"
+    environment:
+      MONGO_USER: 'admin'
+      MONGO_PASSWORD: 'admin'
+      MONGO_HOST: 'interscity-mongo'
+      MONGO_PORT: 27017
+      MONGO_CACHE_HOST: 'interscity-mongo-cache'
+      MONGO_CACHE_PORT: 27017
+      RABBITMQ_HOST: 'interscity-rabbitmq'
+      KONG_URI: 'http://interscity-kong:8001'
+      SELF_HOST: 'interscity-data-collector:3000'
+      REGISTER_METHOD: 'target'
+      CATALOGUER_HOST: 'interscity-resource-cataloguer:3000'
+
+networks:
+  default:
+    external:
+      name: platform 
+
+volumes:
+  db-data-kong-postgres:
