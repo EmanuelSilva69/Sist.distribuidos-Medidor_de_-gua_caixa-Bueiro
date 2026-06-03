@@ -1,0 +1,134 @@
+version: '3.8'
+
+services:
+  # 1. Base de Dados (Persistência para a Evolution API)
+  postgres-reservatorio:
+    image: postgres:16-alpine
+    container_name: postgres-reservatorio
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-admin_monitor}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${EVOLUTION_DB_NAME:-evolution_db}
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - rede-monitoramento-hidrico
+      - interscity-platform
+
+  # 2. Redis (Cache de Performance)
+  redis-reservatorio:
+    image: redis:7-alpine
+    container_name: redis-reservatorio
+    restart: unless-stopped
+    networks:
+      - rede-monitoramento-hidrico
+      - interscity-platform
+
+  # 3. Evolution API v2.3.7 (Interface WhatsApp)
+  evolution-reservatorio:
+    image: evoapicloud/evolution-api:v2.3.7
+    container_name: evolution-reservatorio
+    restart: unless-stopped
+    ports:                  # <--- PORTAS MAPEADAS AQUI
+      - "5564:8080"         # <--- HOST(5564) : CONTÊINER(8080)
+    environment:
+      - SERVER_URL=http://evolution-reservatorio:8080
+      - AUTHENTICATION_TYPE=apikey
+      - AUTHENTICATION_API_KEY=${EVOLUTION_API_KEY}
+      
+      # Conexão com o Banco (Lógica de Persistência v2)
+      - DATABASE_ENABLED=true
+      - DATABASE_PROVIDER=postgresql
+      - DATABASE_CONNECTION_URI=postgresql://${POSTGRES_USER:-admin_monitor}:${POSTGRES_PASSWORD}@postgres-reservatorio:5432/${EVOLUTION_DB_NAME:-evolution_db}?schema=public
+      - DATABASE_CONNECTION_CLIENT_NAME=monitor_hidrico_v2
+      
+      # Cache Redis para performance em tempo real
+      - CACHE_REDIS_ENABLED=true
+      - CACHE_REDIS_URI=redis://redis-reservatorio:6379/0
+      - CACHE_LOCAL_ENABLED=false
+      
+      - CONFIG_SESSION_PHONE_WATCH=true
+      - QRCODE_LIMIT=30
+    volumes:
+      - evolution_instances:/evolution/instances
+    networks:
+      - rede-monitoramento-hidrico
+      - interscity-platform
+    depends_on:
+      postgres-reservatorio:
+        condition: service_started
+      redis-reservatorio:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"const http=require('http'); const req=http.get('http://localhost:8080', res => process.exit(res.statusCode >= 500 ? 1 : 0)); req.on('error', () => process.exit(1)); req.setTimeout(3000, () => { req.destroy(); process.exit(1); });\""]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+  # 4. Bot de Monitoramento (Seu código em C distribuído)
+  bot-monitor:
+    build:
+      context: .
+      dockerfile: Dockerfile.bot
+    container_name: bot-monitor-hidrico
+    restart: unless-stopped
+    environment:
+      - MIDDLEWARE_URL=${MIDDLEWARE_URL}
+      - URL_SENSOR_ANTIGO=${URL_SENSOR_ANTIGO}
+      - URL_SENSOR_NOVO=${URL_SENSOR_NOVO}
+      - EVOLUTION_URL=http://evolution-reservatorio:8080/message/sendText/reservatorio-slz
+      - EVOLUTION_API_KEY=${EVOLUTION_API_KEY}
+      - INSTANCE_NAME=${INSTANCE_NAME:-reservatorio-slz}
+      - NIVEL_CRITICO=15 
+      - GESTOR_JID=${GESTOR_JID}
+    networks:
+      - rede-monitoramento-hidrico
+      - interscity-platform  # Conecta à rede externa para alcançar o Cataloguer
+    depends_on:
+      evolution-reservatorio:
+        condition: service_healthy
+
+  # 5. Simulador ESP32 (Aquisição e Post de Telemetria Dinâmica)
+  simulador-esp32:
+    build:
+      context: .
+      dockerfile: Dockerfile.simulador
+    container_name: simulador-esp32-hidrico
+    restart: unless-stopped
+    environment:
+      - MIDDLEWARE_URL=${MIDDLEWARE_POST_URL}  # Injeta a URL do Data Collector local
+    networks:
+      - rede-monitoramento-hidrico
+      - interscity-platform  # Conecta à rede externa para alcançar o Data Collector
+
+
+  # Serviço de Auto-Registo (Init Container)
+  setup-sensor-automatico:
+    image: python:3.11-slim
+    container_name: registador-interscity
+    # Mapeia a pasta atual para o contentor encontrar o seu teste.py
+    volumes:
+      - ./:/app
+    working_dir: /app
+    # Instala o requests, aguarda 30 segundos (para o InterSCity ligar totalmente) e regista o sensor
+    command: bash -c "pip install requests && echo 'A aguardar o InterSCity...' && sleep 30 && python teste.py"
+    networks:
+      - interscity-platform
+    depends_on:
+      - interscity-resource-cataloguer
+networks:
+  rede-monitoramento-hidrico:
+    driver: bridge
+  # Declaração da rede externa criada pelo build do InterSCity
+  interscity-platform:
+    external:
+      name: platform
+      
+
+volumes:
+  postgres_data:
+  evolution_instances:
